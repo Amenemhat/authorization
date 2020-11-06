@@ -1,1 +1,1 @@
-# autorization via GitHub
+# authorization via GitHub
