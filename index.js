@@ -1,9 +1,11 @@
 require("dotenv").config();
 const fetch = require("node-fetch");
+const cookieSession = require("cookie-session")
 const express = require("express");
 const app = express();
 const client_id = process.env.GITHUB_CLIENT_ID;
 const client_secret = process.env.GITHUB_CLIENT_SECRET;
+const cookie_secret = process.env.COOKIE_SECRET;
 
 app.get("/", (req, res) => {
   res.send("<h1>Welcome</h1><a href='/login/github'>Sign in with GitHub</a>");
@@ -14,7 +16,30 @@ app.get("/login/github", (req, res) => {
   res.redirect(url);
 });
 
-async function getAccessToken(code) {
+app.use(cookieSession({
+  secret: cookie_secret,
+}));
+
+async function checkAccessToken(req) {
+  let nowSeconds = getTime(new Date() / 60);
+  if(req.session.token){
+    if(req.session.tokenExpiresIn > nowSeconds){
+      return req.session.token;
+    } 
+    else {
+      return await refreshToken(req);
+    }
+  }
+  return null;
+}
+
+async function getAccessToken(req) {
+  const token = checkAccessToken(req);
+  if(token) {
+    return token;
+  }
+  
+  const code = req.query.code;
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: {
@@ -28,6 +53,7 @@ async function getAccessToken(code) {
   });
   const data = await res.text();
   const params = new URLSearchParams(data);
+  console.log(params);
   return params.get("access_token");
 }
 
@@ -42,8 +68,7 @@ async function getGithubUser(access_token) {
 }
 
 app.get("/login/github/callback", async (req, res) => {
-  const code = req.query.code;
-  const token = await getAccessToken(code);
+  const token = await getAccessToken(req);
   const githubData = await getGithubUser(token);
 
   res.send(
