@@ -65,8 +65,8 @@ async function checkAccessToken(req) {
   );
 
   if (req.session.access_token) {
-    if (false) {
-      //(req.session.expires_in > now) {
+    //if (false) {
+    if (req.session.expires_in > now) {
       console.log(
         "checkAccessToken return req.session.access_token = " +
           req.session.access_token
