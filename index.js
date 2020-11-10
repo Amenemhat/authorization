@@ -1,6 +1,6 @@
 require("dotenv").config();
 const fetch = require("node-fetch");
-const cookieSession = require("cookie-session")
+const cookieSession = require("cookie-session");
 const express = require("express");
 const app = express();
 const client_id = process.env.GITHUB_CLIENT_ID;
@@ -16,29 +16,78 @@ app.get("/login/github", (req, res) => {
   res.redirect(url);
 });
 
-app.use(cookieSession({
-  secret: cookie_secret,
-}));
+app.use(
+  cookieSession({
+    secret: cookie_secret,
+  })
+);
+
+async function refreshToken(req) {
+  const refresh_token = req.session.refresh_token;
+  const grant_type = "refresh_token";
+  const body = JSON.stringify({
+    refresh_token,
+    grant_type,
+    client_id,
+    client_secret,
+  });
+  console.log(body);
+  const res = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: body,
+  });
+  const data = await res.text();
+  const params = new URLSearchParams(data);
+  console.log("refreshToken");
+  console.log(params);
+
+  let now = new Date() / 60;
+  req.session.access_token = params.get("access_token");
+  req.session.expires_in = +params.get("expires_in") + now;
+  req.session.refresh_token = params.get("refresh_token");
+  req.session.refresh_token_expires_in =
+    +params.get("refresh_token_expires_in") + now;
+  return params.get("access_token");
+}
 
 async function checkAccessToken(req) {
-  let nowSeconds = getTime(new Date() / 60);
-  if(req.session.token){
-    if(req.session.tokenExpiresIn > nowSeconds){
-      return req.session.token;
-    } 
-    else {
+  let now = new Date() / 60;
+  console.log(
+    "refresh_token_expires_in = " +
+      req.session.refresh_token_expires_in +
+      " > now =" +
+      now +
+      " token = " +
+      req.session.access_token
+  );
+
+  if (req.session.access_token) {
+    if (false) {
+      //(req.session.expires_in > now) {
+      console.log(
+        "checkAccessToken return req.session.access_token = " +
+          req.session.access_token
+      );
+      return req.session.access_token;
+    } else if (req.session.refresh_token_expires_in > now) {
+      console.log("checkAccessToken return await refreshToken(req)");
       return await refreshToken(req);
     }
   }
-  return null;
+  console.log("checkAccessToken return null");
+  return "";
 }
 
 async function getAccessToken(req) {
-  const token = checkAccessToken(req);
-  if(token) {
+  const token = await checkAccessToken(req);
+  if (token != "" && token != null) {
+    console.log("getAccessToken return token = " + JSON.stringify(token));
     return token;
   }
-  
+
   const code = req.query.code;
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -53,7 +102,15 @@ async function getAccessToken(req) {
   });
   const data = await res.text();
   const params = new URLSearchParams(data);
+  console.log("getAccessToken");
   console.log(params);
+
+  let now = new Date() / 60;
+  req.session.access_token = params.get("access_token");
+  req.session.expires_in = +params.get("expires_in") + now;
+  req.session.refresh_token = params.get("refresh_token");
+  req.session.refresh_token_expires_in =
+    +params.get("refresh_token_expires_in") + now;
   return params.get("access_token");
 }
 
@@ -76,9 +133,9 @@ app.get("/login/github/callback", async (req, res) => {
       githubData.name +
       "</h1><a href='/'>Home page</a><h2>access_token: " +
       token +
-      "</h3><h2>User data: " +
+      "</h3><p>User data: " +
       JSON.stringify(githubData) +
-      "</h3>"
+      "</p>"
   );
 });
 
