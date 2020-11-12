@@ -8,7 +8,9 @@ const client_secret = process.env.GITHUB_CLIENT_SECRET;
 const cookie_secret = process.env.COOKIE_SECRET;
 
 app.get("/", (req, res) => {
-  res.send("<h1>Welcome</h1><a href='/login/github'>Sign in with GitHub</a>");
+  res.send(
+    "<h1>Welcome</h1><h3><a href='/login/github'>Sign in with GitHub</a></h3>"
+  );
 });
 
 app.get("/login/github", (req, res) => {
@@ -31,7 +33,6 @@ async function refreshToken(req) {
     client_id,
     client_secret,
   });
-  console.log(body);
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: {
@@ -41,8 +42,6 @@ async function refreshToken(req) {
   });
   const data = await res.text();
   const params = new URLSearchParams(data);
-  console.log("refreshToken");
-  console.log(params);
 
   let now = new Date() / 60;
   req.session.access_token = params.get("access_token");
@@ -55,36 +54,20 @@ async function refreshToken(req) {
 
 async function checkAccessToken(req) {
   let now = new Date() / 60;
-  console.log(
-    "refresh_token_expires_in = " +
-      req.session.refresh_token_expires_in +
-      " > now =" +
-      now +
-      " token = " +
-      req.session.access_token
-  );
 
   if (req.session.access_token) {
-    //if (false) {
     if (req.session.expires_in > now) {
-      console.log(
-        "checkAccessToken return req.session.access_token = " +
-          req.session.access_token
-      );
       return req.session.access_token;
     } else if (req.session.refresh_token_expires_in > now) {
-      console.log("checkAccessToken return await refreshToken(req)");
       return await refreshToken(req);
     }
   }
-  console.log("checkAccessToken return null");
   return "";
 }
 
 async function getAccessToken(req) {
   const token = await checkAccessToken(req);
   if (token != "" && token != null) {
-    console.log("getAccessToken return token = " + JSON.stringify(token));
     return token;
   }
 
@@ -102,8 +85,6 @@ async function getAccessToken(req) {
   });
   const data = await res.text();
   const params = new URLSearchParams(data);
-  console.log("getAccessToken");
-  console.log(params);
 
   let now = new Date() / 60;
   req.session.access_token = params.get("access_token");
@@ -131,11 +112,30 @@ app.get("/login/github/callback", async (req, res) => {
   res.send(
     "<h1>Hello " +
       githubData.name +
-      "</h1><a href='/'>Home page</a><h2>access_token: " +
-      token +
-      "</h3><p>User data: " +
-      JSON.stringify(githubData) +
-      "</p>"
+      "</h1><h3> <a href='/'>Home page</a> </br> <a href='/repos'>User repos</a></h3>"
+  );
+});
+
+app.get("/repos", async (req, res) => {
+  const githubData = await getGithubUser(req.session.access_token);
+  const urlRepos = githubData.repos_url;
+  const response = await fetch(urlRepos);
+  const data = await response.text();
+  const params = JSON.parse(data).map(
+    (item) =>
+      "<a href='https://github.com/" +
+      item.full_name +
+      "'>" +
+      item.full_name +
+      "</a>"
+  );
+
+  res.send(
+    "<h1>Hello " +
+      githubData.name +
+      "</h1><h3><a href='/'>Home page</a></br>Your repos: <ul><li>" +
+      params.join("</li><li>") +
+      "</li></ul></h3>"
   );
 });
 
