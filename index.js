@@ -139,6 +139,10 @@ app.get("/repos", async (req, res) => {
   );
 });
 
+app.get("/webhook", async (req, res) => {
+  console.log(JSON.parse(req));
+});
+
 app.listen(3000, () => {
   console.log("Server is running on http://localhost:3000");
 });
