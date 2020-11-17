@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { Octokit } = require("@octokit/rest");
 const fetch = require("node-fetch");
 const cookieSession = require("cookie-session");
 const express = require("express");
@@ -6,6 +7,10 @@ const app = express();
 const client_id = process.env.GITHUB_CLIENT_ID;
 const client_secret = process.env.GITHUB_CLIENT_SECRET;
 const cookie_secret = process.env.COOKIE_SECRET;
+const octokitToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+const octokit = new Octokit({
+  auth: octokitToken,
+});
 
 app.get("/", (req, res) => {
   res.send(
