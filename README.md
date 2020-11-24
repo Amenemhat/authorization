@@ -1,2 +1,2 @@
 # authorization via GitHub
-test 7
+test 8
