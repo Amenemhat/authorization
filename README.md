@@ -1,2 +1,2 @@
 # authorization via GitHub
-test 35
+test 36
