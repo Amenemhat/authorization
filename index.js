@@ -1,4 +1,6 @@
 require("dotenv").config();
+const bodyParser = require("body-parser");
+const urlencodedParser = bodyParser.urlencoded({ extended: false })
 const { Octokit } = require("@octokit/rest");
 const fetch = require("node-fetch");
 const cookieSession = require("cookie-session");
@@ -6,7 +8,7 @@ const express = require("express");
 const app = express();
 const client_id = process.env.GITHUB_CLIENT_ID;
 const client_secret = process.env.GITHUB_CLIENT_SECRET;
-const cookie_secret = process.env.COOKIE_SECRET;
+const cookie_secret = process.env.COOKIE_SESSION_SECRET;
 const octokitToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
 const octokit = new Octokit({
   auth: octokitToken,
@@ -144,8 +146,30 @@ app.get("/repos", async (req, res) => {
   );
 });
 
-app.get("/webhook", async (req, res) => {
-  console.log(JSON.parse(req));
+async function createStatus(body){
+  const owner = body.repository.owner.name;
+  const repo = body.repository.name;
+  const sha = body.commits[0].id;
+
+  console.log("owner: " + owner + " repo: " + repo + " sha: " + sha);
+
+  const data = await octokit.repos.createCommitStatus({
+    owner: owner,
+    repo: repo,
+    sha: sha,
+    state: "success",
+    target_url: "",
+    description: "Hello Dimka!",
+  });
+  return data;
+}
+
+app.post("/webhook", urlencodedParser, async (req, res) => {
+
+  const data = await createStatus(JSON.parse(req.body.payload));
+  console.log(data);
+
+  res.send("Hello Dimka");
 });
 
 app.listen(3000, () => {
