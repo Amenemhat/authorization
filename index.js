@@ -1,18 +1,20 @@
 require("dotenv").config();
-const bodyParser = require("body-parser");
-const urlencodedParser = bodyParser.urlencoded({ extended: false })
-const { Octokit } = require("@octokit/rest");
-const fetch = require("node-fetch");
+const authorization = require("./authorization.js");
+const statusChecks = require("./status_checks.js");
 const cookieSession = require("cookie-session");
+const bodyParser = require("body-parser");
+const urlencodedParser = bodyParser.urlencoded({ extended: false });
+const fetch = require("node-fetch");
 const express = require("express");
 const app = express();
 const client_id = process.env.GITHUB_CLIENT_ID;
-const client_secret = process.env.GITHUB_CLIENT_SECRET;
 const cookie_secret = process.env.COOKIE_SESSION_SECRET;
-const octokitToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
-const octokit = new Octokit({
-  auth: octokitToken,
-});
+
+app.use(
+  cookieSession({
+    secret: cookie_secret,
+  })
+);
 
 app.get("/", (req, res) => {
   res.send(
@@ -25,96 +27,9 @@ app.get("/login/github", (req, res) => {
   res.redirect(url);
 });
 
-app.use(
-  cookieSession({
-    secret: cookie_secret,
-  })
-);
-
-async function refreshToken(req) {
-  const refresh_token = req.session.refresh_token;
-  const grant_type = "refresh_token";
-  const body = JSON.stringify({
-    refresh_token,
-    grant_type,
-    client_id,
-    client_secret,
-  });
-  const res = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: body,
-  });
-  const data = await res.text();
-  const params = new URLSearchParams(data);
-
-  let now = new Date() / 60;
-  req.session.access_token = params.get("access_token");
-  req.session.expires_in = +params.get("expires_in") + now;
-  req.session.refresh_token = params.get("refresh_token");
-  req.session.refresh_token_expires_in =
-    +params.get("refresh_token_expires_in") + now;
-  return params.get("access_token");
-}
-
-async function checkAccessToken(req) {
-  let now = new Date() / 60;
-
-  if (req.session.access_token) {
-    if (req.session.expires_in > now) {
-      return req.session.access_token;
-    } else if (req.session.refresh_token_expires_in > now) {
-      return await refreshToken(req);
-    }
-  }
-  return "";
-}
-
-async function getAccessToken(req) {
-  const token = await checkAccessToken(req);
-  if (token != "" && token != null) {
-    return token;
-  }
-
-  const code = req.query.code;
-  const res = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      client_id,
-      client_secret,
-      code,
-    }),
-  });
-  const data = await res.text();
-  const params = new URLSearchParams(data);
-
-  let now = new Date() / 60;
-  req.session.access_token = params.get("access_token");
-  req.session.expires_in = +params.get("expires_in") + now;
-  req.session.refresh_token = params.get("refresh_token");
-  req.session.refresh_token_expires_in =
-    +params.get("refresh_token_expires_in") + now;
-  return params.get("access_token");
-}
-
-async function getGithubUser(access_token) {
-  const req = await fetch("https://api.github.com/user", {
-    headers: {
-      Authorization: "bearer " + access_token,
-    },
-  });
-  const data = req.json();
-  return data;
-}
-
 app.get("/login/github/callback", async (req, res) => {
-  const token = await getAccessToken(req);
-  const githubData = await getGithubUser(token);
+  const token = await authorization.getAccessToken(req);
+  const githubData = await authorization.getGithubUser(token);
 
   res.send(
     "<h1>Hello " +
@@ -124,7 +39,9 @@ app.get("/login/github/callback", async (req, res) => {
 });
 
 app.get("/repos", async (req, res) => {
-  const githubData = await getGithubUser(req.session.access_token);
+  const githubData = await authorization.getGithubUser(
+    req.session.access_token
+  );
   const urlRepos = githubData.repos_url;
   const response = await fetch(urlRepos);
   const data = await response.text();
@@ -146,28 +63,15 @@ app.get("/repos", async (req, res) => {
   );
 });
 
-async function createStatus(body){
-  const owner = body.repository.owner.name;
-  const repo = body.repository.name;
-  const sha = body.commits[0].id;
+app.post("/webhook_commits", urlencodedParser, async (req, res) => {
+  const payload = JSON.parse(req.body.payload);
 
-  console.log("owner: " + owner + " repo: " + repo + " sha: " + sha);
+  await statusChecks.createStatus(payload, "pending", "Processing checks...");
 
-  const data = await octokit.repos.createCommitStatus({
-    owner: owner,
-    repo: repo,
-    sha: sha,
-    state: "success",
-    target_url: "",
-    description: "Hello Dimka!",
-  });
-  return data;
-}
+  console.log("Processing checks...");
+  setTimeout(() => console.log("Checks was processed!"), 1000);
 
-app.post("/webhook", urlencodedParser, async (req, res) => {
-
-  const data = await createStatus(JSON.parse(req.body.payload));
-  console.log(data);
+  await statusChecks.createStatus(payload, "success", "Checks was processed");
 
   res.send("Hello Dimka");
 });
